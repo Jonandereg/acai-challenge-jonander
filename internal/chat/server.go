@@ -10,6 +10,7 @@ import (
 	"github.com/acai-travel/tech-challenge/internal/pb"
 	"github.com/twitchtv/twirp"
 	"go.mongodb.org/mongo-driver/bson/primitive"
+	"golang.org/x/sync/errgroup"
 )
 
 var _ pb.ChatService = (*Server)(nil)
@@ -47,20 +48,50 @@ func (s *Server) StartConversation(ctx context.Context, req *pb.StartConversatio
 		return nil, twirp.RequiredArgumentError("message")
 	}
 
+	// Optimize StartConversation performance by running title + reply generation concurrently.
+	//
+	// There are two main strategies to reduce latency here:
+	//   1. Single API call: Ask the model to return both a title and the first reply in one request.
+	//      - Pros: faster (one round-trip, less cost).
+	//      - Cons: couples title and reply logic, harder to tune/test independently, less robust.
+	//   2. Parallel API calls: Generate title and reply in separate goroutines with errgroup.
+	//      - Pros: keeps concerns separate, maintainable prompts, clearer error handling.
+	//      - Cons: still two requests (though latency is cut in half vs sequential).
+	//
+	// I chose option 2 (parallel calls) to avoid tightly coupling title and reply generation.
+	// If reply generation fails, the request aborts; if title generation fails, we log the error
+	// and fall back to the default "Untitled conversation".
+
+	g, errGroupCtx := errgroup.WithContext(ctx)
+
 	// choose a title
-	title, err := s.assist.Title(ctx, conversation)
-	if err != nil {
-		slog.ErrorContext(ctx, "Failed to generate conversation title", "error", err)
-	} else {
-		conversation.Title = title
-	}
+	var title string
+	g.Go(func() error {
+		t, err := s.assist.Title(errGroupCtx, conversation)
+		if err != nil {
+			slog.ErrorContext(errGroupCtx, "Failed to generate conversation title", "error", err)
+		} else {
+			title = t
+		}
+		return nil
+	})
 
 	// generate a reply
-	reply, err := s.assist.Reply(ctx, conversation)
-	if err != nil {
+	var reply string
+	g.Go(func() error {
+		r, err := s.assist.Reply(errGroupCtx, conversation)
+		if err != nil {
+			slog.ErrorContext(errGroupCtx, "Failed to generate conversation reply", "error", err)
+			return err
+		}
+		reply = r
+		return nil
+	})
+
+	if err := g.Wait(); err != nil {
 		return nil, err
 	}
-
+	conversation.Title = title
 	conversation.Messages = append(conversation.Messages, &model.Message{
 		ID:        primitive.NewObjectID(),
 		Role:      model.RoleAssistant,
