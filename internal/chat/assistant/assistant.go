@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log/slog"
 	"os"
 	"strings"
@@ -142,7 +143,29 @@ func (a *Assistant) Reply(ctx context.Context, conv *model.Conversation) (string
 
 				switch call.Function.Name {
 				case "get_weather":
-					msgs = append(msgs, openai.ToolMessage("weather is fine", call.ID))
+					var payload struct {
+						Location string `json:"location"`
+					}
+
+					if err := json.Unmarshal([]byte(call.Function.Arguments), &payload); err != nil {
+						slog.ErrorContext(ctx, "Invalid weather args", "error", err)
+						msgs = append(msgs, openai.ToolMessage("could not parse location", call.ID))
+						continue
+					}
+					weather, err := FetchWeather(ctx, payload.Location)
+					if err != nil {
+						slog.ErrorContext(ctx, "Weather API failed", "error", err)
+						msgs = append(msgs, openai.ToolMessage("weather service unavailable", call.ID))
+						continue
+					}
+
+					reply := fmt.Sprintf("%s: %.1f°C, %s, wind %.1f km/h",
+						weather.Location,
+						weather.TempC,
+						weather.Condition,
+						weather.WindKph,
+					)
+					msgs = append(msgs, openai.ToolMessage(reply, call.ID))
 				case "get_today_date":
 					msgs = append(msgs, openai.ToolMessage(time.Now().Format(time.RFC3339), call.ID))
 				case "get_holidays":
