@@ -100,6 +100,19 @@ func (a *Assistant) Reply(ctx context.Context, conv *model.Conversation) (string
 					},
 				}),
 				openai.ChatCompletionFunctionTool(openai.FunctionDefinitionParam{
+					Name:        "get_forecast",
+					Description: openai.String("Get a 3-day weather forecast for the given location"),
+					Parameters: openai.FunctionParameters{
+						"type": "object",
+						"properties": map[string]any{
+							"location": map[string]string{
+								"type": "string",
+							},
+						},
+						"required": []string{"location"},
+					},
+				}),
+				openai.ChatCompletionFunctionTool(openai.FunctionDefinitionParam{
 					Name:        "get_today_date",
 					Description: openai.String("Get today's date and time in RFC3339 format"),
 				}),
@@ -166,6 +179,34 @@ func (a *Assistant) Reply(ctx context.Context, conv *model.Conversation) (string
 						weather.WindKph,
 					)
 					msgs = append(msgs, openai.ToolMessage(reply, call.ID))
+				case "get_forecast":
+					var payload struct {
+						Location string `json:"location"`
+					}
+					if err := json.Unmarshal([]byte(call.Function.Arguments), &payload); err != nil {
+						slog.ErrorContext(ctx, "Invalid forecast args", "error", err)
+						msgs = append(msgs, openai.ToolMessage("could not parse location", call.ID))
+						continue
+					}
+
+					forecast, err := FetchForecast(ctx, payload.Location)
+					if err != nil {
+						slog.ErrorContext(ctx, "Forecast API failed", "error", err)
+						msgs = append(msgs, openai.ToolMessage("forecast service unavailable", call.ID))
+						continue
+					}
+
+					var sb strings.Builder
+					for _, day := range forecast.Days {
+						fmt.Fprintf(&sb, "%s: %.1f°C avg, %s (wind %.1f km/h)\n",
+							day.Date.Format("2006-01-02"),
+							day.AvgTempC,
+							day.Condition,
+							day.WindKph,
+						)
+					}
+
+					msgs = append(msgs, openai.ToolMessage(sb.String(), call.ID))
 				case "get_today_date":
 					msgs = append(msgs, openai.ToolMessage(time.Now().Format(time.RFC3339), call.ID))
 				case "get_holidays":
