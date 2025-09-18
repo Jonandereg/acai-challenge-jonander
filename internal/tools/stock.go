@@ -21,6 +21,8 @@ type stockResponse struct {
 	Prev    float64 `json:"pc"`
 }
 
+// StockTool provides real-time stock market quotes for given ticker symbols
+// using the Finnhub API service.
 type StockTool struct{}
 
 func (StockTool) Name() string {

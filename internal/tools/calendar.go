@@ -14,6 +14,8 @@ import (
 	"github.com/openai/openai-go/v2"
 )
 
+// CalendarTool provides functionality to retrieve local bank and public holidays
+// from an ICS calendar feed. It supports filtering by date ranges and limiting results.
 type CalendarTool struct{}
 
 func (CalendarTool) Name() string { return "get_holidays" }
@@ -47,7 +49,7 @@ func (CalendarTool) Handle(ctx context.Context, args json.RawMessage) (string, e
 		link = v
 	}
 
-	events, err := LoadCalendar(ctx, link)
+	events, err := loadCalendar(ctx, link)
 	if err != nil {
 		return "", errors.New("failed to load holiday events")
 
@@ -85,7 +87,7 @@ func (CalendarTool) Handle(ctx context.Context, args json.RawMessage) (string, e
 	return strings.Join(holidays, "\n"), nil
 }
 
-func LoadCalendar(ctx context.Context, link string) ([]*ics.VEvent, error) {
+func loadCalendar(ctx context.Context, link string) ([]*ics.VEvent, error) {
 	slog.InfoContext(ctx, "Loading calendar", "link", link)
 
 	cal, err := ics.ParseCalendarFromUrl(link, ctx)

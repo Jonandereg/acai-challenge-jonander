@@ -53,6 +53,8 @@ type response struct {
 	} `json:"forecast"`
 }
 
+// WeatherTool provides current weather conditions and a 3-day forecast
+// for any given location using the WeatherAPI service.
 type WeatherTool struct{}
 
 func (WeatherTool) Name() string { return "get_weather" }
