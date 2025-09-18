@@ -1,3 +1,7 @@
+📌 **Note for reviewers:**  
+I added a [Design Decisions](#design-decisions) section at the end of this README.  
+It explains the trade-offs I considered and why I chose the approaches I did for each task (and bonus).  
+
 # Acai Technical Challenge
 
 This technical challenge is part of the interview process for a Software Engineer position at [Acai Travel](https://acaitravel.com). 
@@ -178,3 +182,54 @@ Use [OpenTelemetry](https://opentelemetry.io/docs/languages/go/instrumentation/#
 Keep the exporter and provider configuration simple—the key part is how you capture and configure specific metrics.
 
 **Bonus:** Add tracing to the web server to track request flow through the application.
+
+
+## Design Decisions
+
+### Task 1 — Fix conversation title
+- **What I changed:** Reworked title generation to use a **system message** that explicitly asks for a short, descriptive title; passed only the **first user message** (not the whole dialog) to avoid the model “answering” instead of titling.
+- **Why:** Titles should summarize, not respond. Limiting context + a clear instruction reliably produces crisp titles.
+- **Bonus (performance):** Explored two options to reduce latency:
+  1. **Single API call** – ask the model to generate both title and reply together.  
+     - Faster and cheaper (one round-trip).  
+     - But tightly couples prompts, makes testing harder, and risks brittle outputs.  
+  2. **Concurrent API calls** – run title and reply generation in parallel goroutines with `errgroup.WithContext`.  
+     - Still two requests, but halves latency compared to sequential calls.  
+     - Keeps prompts independent, easier to tune/test, clearer error handling.  
+- **Decision:** I chose option 2 (concurrent calls). Even though one API call is technically more efficient, separating title and reply concerns is more maintainable and robust long-term.
+
+### Task 2 — Fix the weather
+- **What I changed:** Replaced the stubbed “weather is fine” tool with a real call to **WeatherAPI** using `http.Client` and `json.Decoder`.
+- **Why:** This provides real temperature, condition, and wind speed with minimal code and clean streaming JSON decoding (no unnecessary buffers).
+- **Bonus (forecast):**  
+  - **Initial approach:** I first added **forecast as a separate tool** to keep responsibilities narrow and explicit. This separation made sense for clarity and testability, and it also technically satisfied the “add a new tool” bonus requirement.  
+  - **Final approach:** After reviewing the API, I realized the `forecast.json` endpoint already includes both **current conditions** and a **multi-day forecast**. Returning everything from one tool reduces duplication, avoids a second network call, and keeps the schema simpler.  
+- **Decision:** Consolidated to **one tool** (`get_weather`) that returns both current conditions and a 3-day forecast. This balances efficiency (one request) with usability (the assistant can naturally decide whether to include current conditions, forecast, or both in its answer).
+
+### Task 3 — Refactor tools
+- **What I changed:** Introduced a **Tool interface** and a **Registry**:
+  - `Tool` exposes `Name()`, `Schema()`, and `Handle(ctx, args)`.
+  - `Registry` maps tool names → handlers, exposes schemas for OpenAI, and dispatches calls.
+- **Why:** This separates concerns (schema/exec), makes tools **pluggable**, and avoids a growing `switch` in the assistant. New tools are just new files implementing `Tool`.
+- **Bonus (new tool):** Added a **stock price** tool backed by **Finnhub** (symbol → current price).  
+  - **Why:** Demonstrates the pattern’s extensibility and real-world API integration. I scoped it to symbols (AAPL, MSFT…) to keep simple, in order to test this you would need to get a free finnhub api key and set it in your enviroment, then try asking the assistant for the current value of a symbol like AAPL.
+
+   ```bash
+   export FINNHUB_TOKEN=your_finnhub_token
+   ```
+
+### Task 4 — Create a test for StartConversation API
+- **What I added:** A **happy-path test** using a `fakeAssistant` that returns a controlled title and reply. The test verifies:
+  - A conversation is created and persisted
+  - Title is populated
+  - Assistant reply is appended as the second message
+- **Why:** Tests the core flow deterministically with no network calls. It provides the most signal for the least setup.  
+- **(Bonus note):** I skipped a dedicated `Title()` as i'm still building confidence with Go testing patterns, and at the time I judged the setup complexity vs. value as too high for the time I had. In practice, I would revisit this with more time or pair with a teammate to learn the idiomatic way.
+
+### Task 5 — Instrument web server
+- **What I changed:** Added **OpenTelemetry** with **stdout exporters** for quick local visibility and wrapped the router in `otelhttp.NewHandler`:
+  - Per-request **traces** (bonus achieved)
+  - Standard **HTTP server metrics** (request duration, body sizes, status code attrs)
+  - Set `service.name=acai-chat`
+- **Why:** Minimal code, no infra required, and easy for reviewers to run and see telemetry immediately. 
+
