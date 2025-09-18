@@ -89,7 +89,7 @@ func (a *Assistant) Reply(ctx context.Context, conv *model.Conversation) (string
 		resp, err := a.cli.Chat.Completions.New(ctx, openai.ChatCompletionNewParams{
 			Model:    openai.ChatModelGPT4_1,
 			Messages: msgs,
-			Tools:    reg.ToolsForOpen(),
+			Tools:    reg.ToolsForOpenAI(),
 		})
 
 		if err != nil {
