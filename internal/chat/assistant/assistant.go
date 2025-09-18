@@ -82,6 +82,7 @@ func (a *Assistant) Reply(ctx context.Context, conv *model.Conversation) (string
 		tools.WeatherTool{},
 		tools.TodayTool{},
 		tools.CalendarTool{},
+		tools.StockTool{},
 	)
 
 	for i := 0; i < 15; i++ {

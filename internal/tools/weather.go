@@ -28,7 +28,7 @@ type forecastDay struct {
 	WindKph   float64
 }
 
-type Response struct {
+type response struct {
 	Location struct {
 		Name string `json:"name"`
 	} `json:"location"`
@@ -100,7 +100,7 @@ func fetchWeather(ctx context.Context, location string) (*weather, error) {
 	url := fmt.Sprintf("https://api.weatherapi.com/v1/forecast.json?key=%s&q=%s&days=3",
 		apiKey, url.QueryEscape(location))
 
-	req, _ := http.NewRequestWithContext(ctx, "GET", url, nil)
+	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	res, err := http.DefaultClient.Do(req)
 	if err != nil {
 		return nil, err
@@ -110,7 +110,7 @@ func fetchWeather(ctx context.Context, location string) (*weather, error) {
 	if res.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("forecast API returned %s", res.Status)
 	}
-	var data Response
+	var data response
 	if err := json.NewDecoder(res.Body).Decode(&data); err != nil {
 		return nil, err
 	}
