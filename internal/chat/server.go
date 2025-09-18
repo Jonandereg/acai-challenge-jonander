@@ -91,7 +91,11 @@ func (s *Server) StartConversation(ctx context.Context, req *pb.StartConversatio
 	if err := g.Wait(); err != nil {
 		return nil, err
 	}
-	conversation.Title = title
+
+	if strings.TrimSpace(title) != "" {
+		conversation.Title = title
+	}
+
 	conversation.Messages = append(conversation.Messages, &model.Message{
 		ID:        primitive.NewObjectID(),
 		Role:      model.RoleAssistant,
